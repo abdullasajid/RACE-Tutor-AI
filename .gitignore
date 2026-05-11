@@ -12,6 +12,11 @@ env/
 data/raw/*.csv
 data/processed/*.csv
 data/processed/*.pkl
+data/processed/**/*.csv
+data/processed/**/*.pkl
+data/processed/**/*.npz
+data/processed/**/*.npy
+data/processed/**/metadata.json
 
 models/**/*.pkl
 models/**/*.joblib
@@ -19,3 +24,11 @@ models/**/*.pt
 models/**/*.bin
 
 *.zip
+
+*.aux
+*.log
+*.out
+*.toc
+*.nav
+*.snm
+*.vrb

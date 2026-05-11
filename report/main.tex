@@ -1,0 +1,406 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage{caption}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
+\setlist[itemize]{leftmargin=1.2em}
+\setlist[enumerate]{leftmargin=1.4em}
+\renewcommand{\arraystretch}{1.18}
+
+\title{\textbf{RACE Tutor AI}\\
+\large Classical Machine Learning System for Reading Comprehension Support}
+\author{
+Abdullah Sajid\\
+Roll No. 22i-2346
+\and
+Huzaifa Khalid\\
+Roll No. 22i-2332
+}
+\date{May 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+RACE Tutor AI is an interactive reading-comprehension tutoring application built
+on the RACE dataset. The system combines a classical machine-learning answer
+verification model with an extractive distractor and hint generator, then exposes
+the complete workflow through a Streamlit interface. Model A predicts the most
+likely answer option for a given passage and question. Model B generates
+plausible distractors and graduated hints from the source passage. The final
+Model A configuration uses one candidate example per answer option, binary
+bag-of-words features, bigrams, TF-IDF similarity, lexical overlap, negation
+features, and per-question relative option features. On the held-out test set,
+the final Model A reaches 37.81\% four-option answer-selection accuracy.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+Reading-comprehension systems are useful for education because they can help
+students practise passage analysis, answer selection, and evidence-based
+reasoning. This project implements a complete tutoring pipeline for the RACE
+dataset using transparent classical machine-learning methods. The goal is not to
+build a large neural model, but to create a reproducible system that can load
+RACE-style data, train an answer verifier, generate hints and distractors, and
+run inside an interactive application.
+
+The project has three main components:
+
+\begin{itemize}
+    \item \textbf{Model A}: an answer-verification and answer-selection model.
+    \item \textbf{Model B}: a deterministic distractor and hint generator.
+    \item \textbf{Frontend}: a Streamlit user interface for loading quizzes,
+    answering questions, revealing hints, and viewing session analytics.
+\end{itemize}
+
+\section{Dataset}
+
+The project uses the RACE dataset, a large-scale reading-comprehension dataset
+based on English examinations. Each example contains an article, a question,
+four answer options, and the correct option label. The local project expects the
+following flat CSV columns:
+
+\begin{center}
+\texttt{id, article, question, A, B, C, D, answer}
+\end{center}
+
+The preprocessing code can also load the HuggingFace \texttt{ehovy/race}
+dataset and flatten each example from a nested \texttt{options} list into the
+explicit \texttt{A}, \texttt{B}, \texttt{C}, and \texttt{D} columns. Examples
+without exactly four options are ignored so that all downstream models receive a
+consistent four-choice structure.
+
+\subsection{Dataset Splits}
+
+Table~\ref{tab:splits} shows the cleaned split sizes used during the final
+training workflow. Cleaning removes invalid answers and rows with empty article
+or question text.
+
+\begin{table}[H]
+\centering
+\caption{Cleaned RACE split sizes used by the project.}
+\label{tab:splits}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Split} & \textbf{Rows} & \textbf{Candidate Rows} & \textbf{Answer A} & \textbf{Not A} \\
+\midrule
+Train & 70,274 & 281,096 & 15,315 & 54,959 \\
+Validation & 8,784 & 35,136 & 1,914 & 6,870 \\
+Test & 8,787 & 35,148 & 1,915 & 6,872 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Preprocessing}
+
+The preprocessing pipeline is implemented in \path{backend/preprocessing.py}
+and \path{backend/feature_engineering.py}. It performs the following steps:
+
+\begin{enumerate}
+    \item Load local RACE CSV files or flatten HuggingFace RACE examples.
+    \item Keep only examples with four options.
+    \item Normalize text by lowercasing, removing punctuation, filling missing
+    text, and normalizing whitespace.
+    \item Drop rows with invalid answer labels.
+    \item Drop rows with empty articles or questions.
+    \item Convert each question into candidate-level training examples.
+\end{enumerate}
+
+For the final Model A, each original question is expanded into four candidate
+examples. Each candidate asks whether a particular option is the correct answer.
+This framing matches the final answer-selection task better than training on
+only option \texttt{A}.
+
+\section{Model A: Answer Verification}
+
+\subsection{Initial Framing}
+
+The first Model A version used a binary option-\texttt{A} formulation:
+
+\begin{center}
+\textit{Is option A correct?}
+\end{center}
+
+The label was 1 when \texttt{answer == "A"} and 0 otherwise. This version was
+useful as a baseline and produced preprocessed artifacts in
+\texttt{data/processed/model\_a}. However, it used only one option per question,
+which discarded information from options \texttt{B}, \texttt{C}, and \texttt{D}.
+
+\subsection{Final Candidate-Level Framing}
+
+The final model trains one example per candidate answer. For each RACE row, the
+system creates four examples:
+
+\begin{center}
+\texttt{article + question + option A},\quad
+\texttt{article + question + option B},\quad
+\texttt{article + question + option C},\quad
+\texttt{article + question + option D}
+\end{center}
+
+The label is 1 for the correct candidate and 0 for the other three candidates.
+At inference time, the model scores all four options and selects the option with
+the highest score.
+
+\subsection{Feature Engineering}
+
+The final feature set combines sparse text features and dense handcrafted
+features:
+
+\begin{itemize}
+    \item Binary bag-of-words features from article, question, and candidate
+    option text.
+    \item Unigram and bigram features using \texttt{ngram\_max = 2}.
+    \item TF-IDF cosine similarity between the article and
+    \texttt{question + option}.
+    \item TF-IDF cosine similarity between the article and question.
+    \item TF-IDF cosine similarity between the article and candidate option.
+    \item Article length, question length, and option length.
+    \item Question-article, option-article, and option-question lexical overlap.
+    \item Option coverage ratio in the article.
+    \item Negation flags for question and option text.
+    \item Per-question relative option features, including option length ratio
+    and overlap deltas against the sibling options.
+\end{itemize}
+
+The vectorizers and dense-feature scaler are fitted only on the training split.
+Validation and test data are transformed using the fitted training objects to
+avoid data leakage.
+
+\subsection{Training Configuration}
+
+The best final Model A was trained with logistic regression:
+
+\begin{table}[H]
+\centering
+\caption{Final Model A training configuration.}
+\label{tab:model-a-config}
+\begin{tabular}{ll}
+\toprule
+\textbf{Setting} & \textbf{Value} \\
+\midrule
+Model & Logistic Regression \\
+Training formulation & Four candidate examples per question \\
+Class weight & None \\
+Regularization parameter & \texttt{C = 0.3} \\
+Maximum vocabulary size & 50,000 \\
+Minimum document frequency & 2 \\
+Maximum n-gram size & 2 \\
+Saved artifact & \texttt{models/model\_a/logreg\_candidate\_rich.pkl} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The exact command used for final training was:
+
+\begin{verbatim}
+.venv/bin/python -m backend.train_model_a \
+  --train data/raw/train.csv \
+  --val data/raw/val.csv \
+  --test data/raw/test.csv \
+  --model logreg_candidate \
+  --class-weight none \
+  --ngram-max 2 \
+  --c 0.3 \
+  --output-name logreg_candidate_rich
+\end{verbatim}
+
+\subsection{Model A Results}
+
+Table~\ref{tab:model-a-progression} shows the answer-selection improvement
+during development.
+
+\begin{table}[H]
+\centering
+\caption{Model A answer-selection accuracy progression.}
+\label{tab:model-a-progression}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Model} & \textbf{Validation Accuracy} & \textbf{Test Accuracy} \\
+\midrule
+Option-A binary model & 0.3283 & 0.3214 \\
+Candidate model & 0.3530 & 0.3570 \\
+Rich candidate model & \textbf{0.3809} & \textbf{0.3781} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The final binary candidate-level metrics are shown in
+Table~\ref{tab:model-a-binary}. These metrics use the independent candidate
+labels. The answer-selection metric is more important for the application
+because the app ranks all four options for each question.
+
+\begin{table}[H]
+\centering
+\caption{Final Model A binary candidate-level metrics.}
+\label{tab:model-a-binary}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Split} & \textbf{Accuracy} & \textbf{Macro F1} & \textbf{Precision} & \textbf{Recall} \\
+\midrule
+Validation & 0.7446 & 0.4671 & 0.4054 & 0.0459 \\
+Test & 0.7444 & 0.4660 & 0.4002 & 0.0447 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:model-a-answer} shows the final four-option answer-selection
+metrics.
+
+\begin{table}[H]
+\centering
+\caption{Final Model A four-option answer-selection metrics.}
+\label{tab:model-a-answer}
+\begin{tabular}{lcc}
+\toprule
+\textbf{Split} & \textbf{Answer Accuracy} & \textbf{Macro F1} \\
+\midrule
+Validation & 0.3809 & 0.3798 \\
+Test & 0.3781 & 0.3771 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Model B: Distractor and Hint Generation}
+
+Model B is implemented in \texttt{backend/model\_b.py}. It is a deterministic
+classical component rather than a trained model artifact. This design keeps the
+system lightweight and explainable.
+
+\subsection{Distractor Generation}
+
+The distractor generator extracts lightweight passage phrases without requiring
+external NLP models. It:
+
+\begin{enumerate}
+    \item Splits the article into sentences.
+    \item Extracts content words while removing English stopwords.
+    \item Builds one- to four-word phrase candidates.
+    \item Filters out phrases that duplicate or contain the correct answer.
+    \item Scores candidates using passage frequency, question overlap, phrase
+    length, and similarity to the correct answer.
+    \item Returns three distinct distractors.
+\end{enumerate}
+
+\subsection{Hint Generation}
+
+The hint generator ranks article sentences by overlap with the question and
+correct answer. It returns three hints:
+
+\begin{enumerate}
+    \item A broad focus hint based on important question terms.
+    \item A supporting sentence with answer terms masked.
+    \item The strongest supporting sentence as direct evidence.
+\end{enumerate}
+
+This gives the student a gradual path from general guidance to stronger
+evidence.
+
+\section{Frontend Application}
+
+The frontend is built in Streamlit and is implemented in
+\texttt{frontend/app.py}. It provides four tabs:
+
+\begin{itemize}
+    \item \textbf{Article Input}: load a random RACE example or create a manual
+    quiz.
+    \item \textbf{Quiz View}: show the passage, question, answer options, and
+    Model A prediction.
+    \item \textbf{Hints}: reveal Model B hints one at a time and view generated
+    distractors.
+    \item \textbf{Analytics}: track attempts, accuracy, latency, and answer
+    history for the current session.
+\end{itemize}
+
+The app uses \texttt{models/model\_a/logreg\_candidate\_rich.pkl} as its default
+answer-verification model.
+
+\section{Verification}
+
+The completed project was verified through:
+
+\begin{itemize}
+    \item Python byte-compilation of backend, frontend, and test modules.
+    \item Backend smoke test covering dataset loading, quiz construction, Model
+    A loading, Model A prediction, Model B distractor generation, and Model B
+    hint generation.
+    \item Streamlit server startup.
+    \item HTTP response check from the running Streamlit app.
+\end{itemize}
+
+The Streamlit app was started successfully at:
+
+\begin{center}
+\url{http://127.0.0.1:8501}
+\end{center}
+
+\section{Limitations}
+
+Although the final model improves over the initial baselines, the system remains
+limited by its classical feature representation. RACE questions often require
+multi-sentence reasoning, inference, paraphrase recognition, and world
+knowledge. Bag-of-words and overlap features cannot fully capture these
+phenomena. Model B is also extractive and deterministic, so distractors can be
+surface-level and may not always match the semantic type of the correct answer.
+
+\section{Future Work}
+
+Future improvements include:
+
+\begin{itemize}
+    \item Use stronger ranking models that optimize answer selection directly.
+    \item Add semantic features from sentence embeddings or transformer models.
+    \item Improve Model B with noun-phrase chunking and answer-type matching.
+    \item Add persistent analytics and per-student progress tracking.
+    \item Build a larger evaluation suite for generated distractor quality and
+    hint usefulness.
+\end{itemize}
+
+\section{Conclusion}
+
+RACE Tutor AI is now a complete running project. It loads and preprocesses RACE
+data, trains a classical answer-selection model, generates distractors and
+hints, and presents the workflow through a Streamlit interface. The strongest
+final Model A reaches 37.81\% test answer-selection accuracy, improving over
+the option-\texttt{A} baseline and the first candidate-level model. Model B
+adds explainable educational support through passage-based distractors and
+graduated hints.
+
+\begin{thebibliography}{9}
+
+\bibitem{race}
+Guokun Lai, Qizhe Xie, Hanxiao Liu, Yiming Yang, and Eduard Hovy.
+\textit{RACE: Large-scale ReAding Comprehension Dataset From Examinations}.
+EMNLP, 2017.
+
+\bibitem{sklearn}
+Fabian Pedregosa et al.
+\textit{Scikit-learn: Machine Learning in Python}.
+Journal of Machine Learning Research, 2011.
+
+\bibitem{streamlit}
+Streamlit documentation.
+\textit{Streamlit: A faster way to build and share data apps}.
+\url{https://streamlit.io/}.
+
+\end{thebibliography}
+
+\end{document}

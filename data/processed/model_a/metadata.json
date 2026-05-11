@@ -1,0 +1,53 @@
+{
+  "task": "Model A option-A binary classification",
+  "label_definition": "1 if answer == 'A', else 0",
+  "features": {
+    "bow": {
+      "type": "CountVectorizer",
+      "binary": true,
+      "max_features": 50000,
+      "min_df": 2,
+      "vocabulary_size": 50000,
+      "input": "article + question + option A"
+    },
+    "dense": [
+      "article_length",
+      "question_length",
+      "option_length",
+      "question_article_overlap",
+      "option_article_overlap",
+      "option_coverage_ratio",
+      "article_option_cosine"
+    ],
+    "dense_scaled_with": "StandardScaler fitted on train only"
+  },
+  "splits": {
+    "train": {
+      "source": "/home/abdullah/Documents/Ai_Project/data/raw/train.csv",
+      "rows": 70274,
+      "features": 50007,
+      "label_counts": {
+        "0": 54959,
+        "1": 15315
+      }
+    },
+    "val": {
+      "source": "/home/abdullah/Documents/Ai_Project/data/raw/val.csv",
+      "rows": 8784,
+      "features": 50007,
+      "label_counts": {
+        "0": 6870,
+        "1": 1914
+      }
+    },
+    "test": {
+      "source": "/home/abdullah/Documents/Ai_Project/data/raw/test.csv",
+      "rows": 8787,
+      "features": 50007,
+      "label_counts": {
+        "0": 6872,
+        "1": 1915
+      }
+    }
+  }
+}

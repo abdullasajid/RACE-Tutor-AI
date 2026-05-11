@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import sys
 import time
 from pathlib import Path
@@ -439,6 +440,10 @@ def _html(content: str) -> None:
     st.markdown(content, unsafe_allow_html=True)
 
 
+def _safe(value: object) -> str:
+    return html.escape(str(value), quote=False)
+
+
 # ── Hero ──────────────────────────────────────────────────────────────────────
 def render_hero() -> None:
     history = st.session_state.history
@@ -585,10 +590,10 @@ def show_quiz_view() -> None:
 
     # Article
     _html('<div class="section-heading"><span class="icon">📄</span> Reading Passage</div>')
-    _html(f'<div class="article-box">{quiz["article"]}</div>')
+    _html(f'<div class="article-box">{_safe(quiz["article"])}</div>')
 
     # Question
-    _html(f'<div class="question-text">❓ {quiz["question"]}</div>')
+    _html(f'<div class="question-text">❓ {_safe(quiz["question"])}</div>')
 
     # Answer options
     selected = st.radio(
@@ -599,7 +604,7 @@ def show_quiz_view() -> None:
     )
 
     st.write("")
-    model_path = PROJECT_ROOT / "models" / "model_a" / "logreg_count.pkl"
+    model_path = PROJECT_ROOT / "models" / "model_a" / "logreg_candidate_rich.pkl"
     use_model = model_path.exists()
 
     if st.button("Check Answer →", type="primary"):
@@ -621,7 +626,7 @@ def show_quiz_view() -> None:
                 f'<div class="result-wrong">'
                 f'<span>✗</span>'
                 f'<span>Incorrect.  The correct answer is '
-                f'<strong>{quiz["correct_label"]}</strong>: {quiz["correct_answer"]}</span>'
+                f'<strong>{_safe(quiz["correct_label"])}</strong>: {_safe(quiz["correct_answer"])}</span>'
                 f'</div>'
             )
 
@@ -629,7 +634,7 @@ def show_quiz_view() -> None:
             conf_pct = f"{model_result['confidence']:.0%}"
             _html(
                 f'<div class="result-model">'
-                f'🤖 Model A predicts <strong>{model_result["answer"]}</strong> '
+                f'🤖 Model A predicts <strong>{_safe(model_result["answer"])}</strong> '
                 f'with {conf_pct} confidence'
                 f'</div>'
             )
@@ -676,7 +681,7 @@ def show_hints() -> None:
         _html(
             f'<div class="hint-card">'
             f'<span class="hint-badge">HINT {i}</span>'
-            f'<span class="hint-text">{hint}</span>'
+            f'<span class="hint-text">{_safe(hint)}</span>'
             f'</div>'
         )
 
@@ -702,9 +707,18 @@ def show_hints() -> None:
         if st.session_state.answer_revealed:
             _html(
                 f'<div class="result-correct" style="margin-top:0.5rem">'
-                f'Answer: <strong>{quiz["correct_label"]}</strong> — {quiz["correct_answer"]}'
+                f'Answer: <strong>{_safe(quiz["correct_label"])}</strong> — {_safe(quiz["correct_answer"])}'
                 f'</div>'
             )
+
+    st.write("")
+    _html('<div class="section-heading" style="font-size:1rem"><span class="icon">🎯</span> Generated Distractors</div>')
+    for label, distractor in zip(["1", "2", "3"], quiz.get("generated_distractors", [])):
+        _html(
+            f'<div class="card-sm">'
+            f'<span class="option-label">{label}</span>{_safe(distractor)}'
+            f'</div>'
+        )
 
 
 # ── Analytics tab ─────────────────────────────────────────────────────────────

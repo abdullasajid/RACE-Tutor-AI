@@ -12,6 +12,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
 
 from backend.config import OPTION_LABELS
+from backend.feature_engineering import ModelAFeatureTransformer
 from backend.preprocessing import build_option_example, clean_text, split_article_sentences
 
 
@@ -246,6 +247,58 @@ def build_feature_svm_model(
     return Pipeline(
         [
             ("features", TextAndOptionFeatures(max_features=max_features)),
+            ("classifier", LinearSVC(class_weight=class_weight, C=c, max_iter=3000)),
+        ]
+    )
+
+
+def build_option_a_logistic_model(
+    max_features: int = 50000,
+    min_df: int = 2,
+    c: float = 1.0,
+    class_weight: ClassWeight = "balanced",
+    batch_size: int = 4096,
+    ngram_max: int = 1,
+    group_size: int = 4,
+) -> Pipeline:
+    return Pipeline(
+        [
+            (
+                "features",
+                ModelAFeatureTransformer(
+                    max_features=max_features,
+                    min_df=min_df,
+                    batch_size=batch_size,
+                    ngram_max=ngram_max,
+                    group_size=group_size,
+                ),
+            ),
+            ("classifier", LogisticRegression(max_iter=1000, class_weight=class_weight, C=c)),
+        ]
+    )
+
+
+def build_option_a_svm_model(
+    max_features: int = 50000,
+    min_df: int = 2,
+    c: float = 1.0,
+    class_weight: ClassWeight = "balanced",
+    batch_size: int = 4096,
+    ngram_max: int = 1,
+    group_size: int = 4,
+) -> Pipeline:
+    return Pipeline(
+        [
+            (
+                "features",
+                ModelAFeatureTransformer(
+                    max_features=max_features,
+                    min_df=min_df,
+                    batch_size=batch_size,
+                    ngram_max=ngram_max,
+                    group_size=group_size,
+                ),
+            ),
             ("classifier", LinearSVC(class_weight=class_weight, C=c, max_iter=3000)),
         ]
     )

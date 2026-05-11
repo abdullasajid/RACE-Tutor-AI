@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -23,6 +23,52 @@ def load_race_csv(path: str | Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
     return df
+
+
+def flatten_race_split(split: Any) -> pd.DataFrame:
+    """Flatten a HuggingFace RACE split into article/question/A/B/C/D/answer rows."""
+    rows: list[dict[str, object]] = []
+
+    for index, example in enumerate(split):
+        options = example.get("options") or []
+        if len(options) != len(OPTION_LABELS):
+            continue
+
+        row = {
+            "id": example.get("example_id") or example.get("id") or str(index),
+            "article": example.get("article", ""),
+            "question": example.get("question", ""),
+            "answer": example.get("answer", ""),
+        }
+        row.update({label: options[position] for position, label in enumerate(OPTION_LABELS)})
+        rows.append(row)
+
+    return pd.DataFrame(rows, columns=REQUIRED_COLUMNS)
+
+
+def load_huggingface_race(
+    dataset_name: str = "ehovy/race",
+    config_name: str = "all",
+) -> dict[str, pd.DataFrame]:
+    """Load ehovy/race from HuggingFace and flatten train/validation/test splits."""
+    try:
+        from datasets import load_dataset
+    except ImportError as exc:
+        raise ImportError(
+            "Install the datasets package to load HuggingFace RACE: "
+            "pip install datasets"
+        ) from exc
+
+    dataset = load_dataset(dataset_name, config_name)
+    split_names = {
+        "train": "train",
+        "validation": "val",
+        "test": "test",
+    }
+    return {
+        output_name: flatten_race_split(dataset[input_name])
+        for input_name, output_name in split_names.items()
+    }
 
 
 def split_race_dataframe(
@@ -80,10 +126,16 @@ def split_race_dataframe(
 
 def prepare_race_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
+    missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
+    if missing:
+        raise ValueError(f"Missing required columns: {missing}")
+
     for column in ["article", "question", *OPTION_LABELS]:
         df[column] = df[column].fillna("").map(clean_text)
     df["answer"] = df["answer"].astype(str).str.strip().str.upper()
-    return df
+    df = df[df["answer"].isin(OPTION_LABELS)]
+    df = df[(df["article"] != "") & (df["question"] != "")]
+    return df[REQUIRED_COLUMNS].reset_index(drop=True)
 
 
 def build_option_example(article: object, question: object, option: object) -> str:
@@ -149,6 +201,19 @@ def build_answer_verification_dataset(
             option_text = row_dict[option_label]
             texts.append(build_option_example(article, question, option_text))
             labels.append(1 if option_label == correct else 0)
+
+    return texts, labels
+
+
+def build_option_a_binary_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]:
+    """Build one binary example per question: is option A the correct answer?"""
+    prepared = prepare_race_dataframe(df)
+    texts: list[str] = []
+    labels: list[int] = []
+
+    for row in prepared.itertuples(index=False):
+        texts.append(build_option_example(row.article, row.question, row.A))
+        labels.append(1 if row.answer == "A" else 0)
 
     return texts, labels
 

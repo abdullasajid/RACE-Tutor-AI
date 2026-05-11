@@ -1,17 +1,16 @@
 # Report
 
-Place the final project report PDF here.
+The final LaTeX report source is `main.tex`.
 
-Suggested sections:
+Build the PDF with:
 
-1. Abstract
-2. Introduction and motivation
-3. Related work
-4. Dataset analysis
-5. Model A design, training, and results
-6. Model B design, training, and results
-7. User interface description
-8. Evaluation and discussion
-9. Limitations and future work
-10. Conclusion
-11. References
+```bash
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory report report/main.tex
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory report report/main.tex
+```
+
+Compiled output:
+
+```text
+report/main.pdf
+```

@@ -1,0 +1,404 @@
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{default}
+\usefonttheme{professionalfonts}
+
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\definecolor{raceblue}{RGB}{33,83,156}
+\definecolor{racegold}{RGB}{214,143,0}
+\setbeamercolor{structure}{fg=raceblue}
+\setbeamercolor{title}{fg=white,bg=raceblue}
+\setbeamercolor{frametitle}{fg=white,bg=raceblue}
+\setbeamercolor{block title}{fg=white,bg=raceblue}
+\setbeamercolor{block body}{bg=blue!3}
+
+\title[RACE Tutor AI]{RACE Tutor AI}
+\subtitle{Classical ML Reading Comprehension Tutor}
+\author[Abdullah Sajid \& Huzaifa Khalid]{
+Abdullah Sajid \;--\; 22i-2346\\
+Huzaifa Khalid \;--\; 22i-2332
+}
+\date{May 2026}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\begin{frame}{Presentation Roadmap}
+    \tableofcontents
+\end{frame}
+
+\section{Project Overview}
+
+\begin{frame}{Project Goal}
+    \begin{block}{Objective}
+        Build a fully running reading-comprehension tutor on the RACE dataset.
+    \end{block}
+
+    \begin{itemize}
+        \item Load and preprocess RACE-style multiple-choice questions.
+        \item Train \textbf{Model A} to verify and rank answer options.
+        \item Build \textbf{Model B} to generate distractors and graduated hints.
+        \item Provide a Streamlit app for quiz practice, hints, predictions, and analytics.
+    \end{itemize}
+
+    \vspace{0.2cm}
+    \textbf{Final app:} \texttt{frontend/app.py}\\
+    \textbf{Best Model A artifact:} \texttt{models/model\_a/logreg\_candidate\_rich.pkl}
+\end{frame}
+
+\begin{frame}{Backend Implementation Map}
+    \begin{tabular}{p{0.32\linewidth} p{0.58\linewidth}}
+        \toprule
+        \textbf{File} & \textbf{Purpose} \\
+        \midrule
+        \texttt{preprocessing.py} & Load, flatten, clean, split, and build candidate examples. \\
+        \texttt{feature\_engineering.py} & Sparse text features, dense lexical features, cosine features, scaling. \\
+        \texttt{model\_a.py} & Model builders, training helpers, answer prediction. \\
+        \texttt{train\_model\_a.py} & CLI for Model A training/evaluation. \\
+        \texttt{model\_b.py} & Extractive distractor and hint generation. \\
+        \texttt{inference.py} & End-to-end quiz construction for the frontend. \\
+        \texttt{frontend/app.py} & Streamlit user interface. \\
+        \bottomrule
+    \end{tabular}
+\end{frame}
+
+\section{Dataset and EDA}
+
+\begin{frame}{Dataset Explanation}
+    \begin{itemize}
+        \item Dataset: \textbf{RACE}, a reading-comprehension dataset based on English exams.
+        \item Each row contains:
+        \begin{itemize}
+            \item article/passage
+            \item question
+            \item four options: A, B, C, D
+            \item correct answer label
+        \end{itemize}
+        \item Local expected format:
+    \end{itemize}
+
+    \begin{center}
+        \texttt{id, article, question, A, B, C, D, answer}
+    \end{center}
+
+    \begin{block}{HuggingFace Flattening}
+        The \texttt{ehovy/race} format stores options as a list. The backend flattens
+        this into explicit columns \texttt{A}, \texttt{B}, \texttt{C}, and \texttt{D},
+        keeping only examples with exactly four options.
+    \end{block}
+\end{frame}
+
+\begin{frame}{EDA: Dataset Size and Answer Distribution}
+    \begin{table}
+        \centering
+        \small
+        \begin{tabular}{lrrrrr}
+            \toprule
+            \textbf{Split} & \textbf{Rows} & \textbf{A} & \textbf{B} & \textbf{C} & \textbf{D} \\
+            \midrule
+            Train & 70,292 & 15,317 & 18,181 & 19,112 & 17,682 \\
+            Validation & 8,787 & 1,914 & 2,273 & 2,390 & 2,210 \\
+            Test & 8,787 & 1,915 & 2,272 & 2,389 & 2,211 \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+
+    \vspace{0.2cm}
+    \begin{itemize}
+        \item Distribution is not perfectly uniform.
+        \item In all splits, option C is most frequent and option A is least frequent.
+        \item Train percentages: A 21.8\%, B 25.9\%, C 27.2\%, D 25.2\%.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{EDA: Text Length Statistics}
+    \begin{table}
+        \centering
+        \small
+        \begin{tabular}{lrrr}
+            \toprule
+            \textbf{Split} & \textbf{Article Mean/Median} & \textbf{Question Mean/Median} & \textbf{Option Mean/Median} \\
+            \midrule
+            Train & 275.2 / 279 & 10.0 / 10 & 5.7 / 5 \\
+            Validation & 274.4 / 278 & 10.0 / 10 & 5.7 / 6 \\
+            Test & 273.7 / 278 & 10.0 / 10 & 5.7 / 5 \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+
+    \begin{block}{Interpretation}
+        Articles are much longer than questions and options. This supports using
+        sparse text features and similarity features rather than raw text length alone.
+    \end{block}
+\end{frame}
+
+\section{Statistical Analysis}
+
+\begin{frame}{Statistical Analysis Used}
+    \begin{enumerate}
+        \item \textbf{Descriptive statistics}: row counts, word-length means, medians.
+        \item \textbf{Class distribution analysis}: answer label frequencies.
+        \item \textbf{Chi-square goodness-of-fit test}: tested whether answer labels are uniformly distributed.
+        \item \textbf{Candidate feature comparison}: compared correct vs incorrect candidate overlap statistics.
+    \end{enumerate}
+
+    \vspace{0.2cm}
+    \begin{table}
+        \centering
+        \small
+        \begin{tabular}{lrr}
+            \toprule
+            \textbf{Split} & \textbf{Chi-square statistic} & \textbf{p-value} \\
+            \midrule
+            Train & 446.12 & $2.26 \times 10^{-96}$ \\
+            Validation & 56.12 & $3.96 \times 10^{-12}$ \\
+            Test & 55.63 & $5.03 \times 10^{-12}$ \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+\end{frame}
+
+\begin{frame}{Interpretation of Statistical Analysis}
+    \begin{itemize}
+        \item The chi-square results show answer labels are statistically different from a perfectly uniform distribution.
+        \item Option A appears less frequently than the other labels.
+        \item This explains why the early option-A-only binary model was limited.
+        \item The final model therefore trains on \textbf{all four candidates} instead of only option A.
+    \end{itemize}
+
+    \begin{block}{Correct vs Incorrect Candidate Evidence}
+        On the training split:
+        \begin{itemize}
+            \item Correct option coverage in article: 0.6814
+            \item Incorrect option coverage in article: 0.6344
+            \item Correct options are slightly longer on average: 6.05 vs 5.76 words
+        \end{itemize}
+    \end{block}
+\end{frame}
+
+\section{Preprocessing}
+
+\begin{frame}{Complete Data Preprocessing Steps}
+    \begin{enumerate}
+        \item Load CSV splits or HuggingFace RACE.
+        \item Flatten nested options into A/B/C/D columns.
+        \item Keep only examples with exactly four options.
+        \item Lowercase all text.
+        \item Remove punctuation and normalize whitespace.
+        \item Fill missing text with empty strings.
+        \item Drop invalid answer labels.
+        \item Drop rows with empty articles or questions.
+        \item Expand each question into candidate-level examples.
+        \item Fit vectorizer/scaler on train only; reuse on validation/test.
+    \end{enumerate}
+\end{frame}
+
+\begin{frame}{Feature Engineering Pipeline}
+    \begin{columns}
+        \begin{column}{0.48\linewidth}
+            \textbf{Sparse Features}
+            \begin{itemize}
+                \item CountVectorizer
+                \item Binary bag-of-words
+                \item Unigrams + bigrams
+                \item Max features: 50,000
+                \item Minimum document frequency: 2
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.48\linewidth}
+            \textbf{Dense Features}
+            \begin{itemize}
+                \item Length features
+                \item Lexical overlap ratios
+                \item TF-IDF cosine similarities
+                \item Negation flags
+                \item Per-question relative option features
+                \item StandardScaler fitted on train only
+            \end{itemize}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+\section{Model Selection and Training}
+
+\begin{frame}{Model Selection Process}
+    \begin{table}
+        \centering
+        \small
+        \begin{tabular}{p{0.35\linewidth} p{0.48\linewidth}}
+            \toprule
+            \textbf{Model Tried} & \textbf{Observation} \\
+            \midrule
+            Option-A logistic model & Simple baseline but ignores B/C/D training signal. \\
+            Candidate logistic model & Better aligned with answer selection; trains all four options. \\
+            Candidate SVM & Similar but slightly weaker/slower in slice experiments. \\
+            Rich candidate logistic model & Best validation and test answer-selection accuracy. \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+
+    \begin{block}{Final Selection}
+        Logistic Regression was selected because it is transparent, stable on sparse text
+        features, fast enough for this dataset, and produced the best measured result.
+    \end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Model Training Process}
+    \begin{itemize}
+        \item Final training command:
+    \end{itemize}
+
+    \scriptsize
+    \begin{verbatim}
+.venv/bin/python -m backend.train_model_a \
+  --train data/raw/train.csv \
+  --val data/raw/val.csv \
+  --test data/raw/test.csv \
+  --model logreg_candidate \
+  --class-weight none \
+  --ngram-max 2 \
+  --c 0.3 \
+  --output-name logreg_candidate_rich
+    \end{verbatim}
+    \normalsize
+
+    \begin{itemize}
+        \item Saved model: \texttt{models/model\_a/logreg\_candidate\_rich.pkl}
+        \item Training examples: one candidate row per option.
+        \item Inference: score A/B/C/D and select highest score.
+    \end{itemize}
+\end{frame}
+
+\section{Testing and Results}
+
+\begin{frame}{Testing and Evaluation Setup}
+    \begin{itemize}
+        \item Validation and test sets were held out from training.
+        \item Vectorizers and scalers were fitted only on train.
+        \item Two evaluation views were used:
+        \begin{itemize}
+            \item \textbf{Binary candidate metrics}: each candidate is correct/incorrect.
+            \item \textbf{Four-option answer selection}: highest-scoring option is compared with the true answer.
+        \end{itemize}
+        \item The app task uses four-option answer selection, so that is the primary metric.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Model A Result Progression}
+    \begin{table}
+        \centering
+        \small
+        \begin{tabular}{lcc}
+            \toprule
+            \textbf{Model} & \textbf{Validation Accuracy} & \textbf{Test Accuracy} \\
+            \midrule
+            Option-A binary model & 0.3283 & 0.3214 \\
+            Candidate model & 0.3530 & 0.3570 \\
+            Rich candidate model & \textbf{0.3809} & \textbf{0.3781} \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+
+    \begin{block}{Interpretation}
+        Moving from option-A-only training to all-candidate training improved ranking.
+        Adding bigrams, TF-IDF similarity, negation, and relative option features improved it further.
+    \end{block}
+\end{frame}
+
+\begin{frame}{Final Performance Metrics}
+    \begin{table}
+        \centering
+        \small
+        \begin{tabular}{lrrrr}
+            \toprule
+            \textbf{Split} & \textbf{Binary Acc.} & \textbf{Macro F1} & \textbf{Answer Acc.} & \textbf{Answer F1} \\
+            \midrule
+            Validation & 0.7446 & 0.4671 & 0.3809 & 0.3798 \\
+            Test & 0.7444 & 0.4660 & 0.3781 & 0.3771 \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+
+    \begin{itemize}
+        \item Binary accuracy is high because most candidate options are incorrect.
+        \item Macro F1 reveals the imbalance challenge.
+        \item Answer-selection accuracy is the most meaningful app metric.
+        \item Test accuracy improved from 32.14\% to 37.81\%.
+    \end{itemize}
+\end{frame}
+
+\section{Model B and Demo}
+
+\begin{frame}{Model B: Distractors and Hints}
+    \begin{columns}
+        \begin{column}{0.48\linewidth}
+            \textbf{Distractor Generation}
+            \begin{itemize}
+                \item Extracts passage phrases.
+                \item Removes stopwords.
+                \item Filters correct-answer duplicates.
+                \item Ranks by frequency and question relevance.
+                \item Returns three distinct distractors.
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.48\linewidth}
+            \textbf{Hint Generation}
+            \begin{itemize}
+                \item Ranks supporting sentences.
+                \item Hint 1: broad focus.
+                \item Hint 2: masked evidence.
+                \item Hint 3: direct supporting sentence.
+            \end{itemize}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Streamlit Demo Flow}
+    \begin{enumerate}
+        \item Open the app:
+        \begin{center}
+            \texttt{streamlit run frontend/app.py}
+        \end{center}
+        \item Load a random RACE sample from \texttt{data/raw/test.csv}.
+        \item Answer the question in the Quiz View tab.
+        \item Compare your answer with Model A's predicted answer.
+        \item Reveal Model B hints one at a time.
+        \item View generated distractors.
+        \item Check session analytics: attempts, accuracy, latency, and history.
+    \end{enumerate}
+\end{frame}
+
+\section{Conclusion}
+
+\begin{frame}{Conclusion}
+    \begin{itemize}
+        \item The project is fully running end to end.
+        \item Model A uses a classical ML candidate-ranking pipeline.
+        \item Model B provides extractive distractors and graduated hints.
+        \item The Streamlit frontend integrates quiz loading, prediction, hints, and analytics.
+        \item Final test answer-selection accuracy: \textbf{37.81\%}.
+    \end{itemize}
+
+    \begin{block}{Future Improvements}
+        Direct ranking objectives, stronger semantic features, transformer embeddings,
+        and improved answer-type matching for Model B could further improve performance.
+    \end{block}
+\end{frame}
+
+\begin{frame}
+    \centering
+    \Huge Thank You
+
+    \vspace{0.5cm}
+    \large Questions?
+\end{frame}
+
+\end{document}

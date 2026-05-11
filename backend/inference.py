@@ -32,6 +32,7 @@ def build_quiz_from_race_row(row: pd.Series, model_path: str | None = None) -> d
     quiz = row_to_quiz(row)
     distractors = generate_distractors(
         article=str(quiz["article"]),
+        question=str(quiz["question"]),
         correct_answer=str(quiz["correct_answer"]),
     )
     hints = generate_hints(

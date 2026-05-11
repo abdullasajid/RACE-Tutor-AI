@@ -1,14 +1,32 @@
 # Presentation
 
-Place slides or demo notes here.
+Final slide deck:
 
-Your presentation should cover:
+```text
+presentation/slides.pdf
+```
+
+LaTeX source:
+
+```text
+presentation/slides.tex
+```
+
+Build command:
+
+```bash
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory presentation presentation/slides.tex
+pdflatex -interaction=nonstopmode -halt-on-error -output-directory presentation presentation/slides.tex
+```
+
+The deck covers:
 
 - Dataset explanation
 - EDA and statistical analysis
-- Preprocessing
-- Model selection
-- Training process
-- Testing and evaluation
-- Performance metrics
-- Running demo
+- Statistical-result interpretation
+- Complete preprocessing steps
+- Model selection process
+- Model training process
+- Model testing and evaluation
+- Performance metrics and interpretation
+- Streamlit demo flow
